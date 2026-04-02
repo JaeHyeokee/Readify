@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Courgette&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Readify</h1>
+    <p class="desc">현재 탭의 문서를 스캔하여<br>PDF를 생성합니다.</p>
+
+    <!-- 설정 -->
+    <div class="settings">
+      <label>
+        파일명
+        <input type="text" id="filename" placeholder="Readify">
+      </label>
+      <div class="page-range-group">
+        <label>
+          페이지 범위
+          <select id="rangeType">
+            <option value="all" selected>전체</option>
+            <option value="custom">직접 지정</option>
+          </select>
+        </label>
+        <div id="customRange" class="custom-range hidden">
+          <input type="number" id="pageFrom" min="1" value="1" placeholder="시작"> –
+          <input type="number" id="pageTo" min="1" placeholder="끝">
+        </div>
+      </div>
+      <label>
+        <span>OCR <span class="info-icon" data-tooltip="문서 내 텍스트를 인식하여 검색 가능한 PDF를 만듭니다.">&#9432;</span></span>
+        <span class="switch">
+          <input type="checkbox" id="ocrEnabled" checked>
+          <span class="slider"></span>
+        </span>
+      </label>
+      <label>
+        <span>품질 <span class="info-icon" data-tooltip="PDF 이미지 압축 수준을 조절합니다. 낮을수록 용량이 작아집니다.">&#9432;</span></span>
+        <select id="quality">
+          <option value="high">높음</option>
+          <option value="medium" selected>보통</option>
+          <option value="low">낮음</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- 시작 버튼 -->
+    <button id="startBtn" class="btn-start">PDF 생성 시작</button>
+
+    <!-- 진행 상태 -->
+    <div id="progress" class="progress hidden">
+      <div class="progress-bar">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+      <p id="status" class="status">준비 중...</p>
+    </div>
+
+    <!-- 결과 -->
+    <div id="result" class="result hidden">
+      <p>PDF 생성 완료 !</p>
+    </div>
+  </div>
+
+  <!-- 중지 확인 모달 -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-box">
+      <p class="modal-msg">정말 중지할까요?</p>
+      <div class="modal-actions">
+        <button id="modalCancel" class="modal-btn modal-cancel">취소</button>
+        <button id="modalConfirm" class="modal-btn modal-confirm">중지</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

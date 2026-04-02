@@ -1,0 +1,8 @@
+# 의존성
+node_modules/
+
+# 빌드 산출물
+dist/
+
+# Claude Code 개인 설정
+.claude/

@@ -1,0 +1,299 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 260px;
+  font-family: -apple-system, "Malgun Gothic", sans-serif;
+  background: #ffffff;
+  color: #222;
+}
+
+.container {
+  padding: 20px;
+}
+
+h1 {
+  font-family: 'Courgette', cursive;
+  font-size: 22px;
+  color: #8800ff;
+  margin-bottom: 4px;
+}
+
+.desc {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* 설정 */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.settings label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #555;
+}
+
+
+.settings input[type="text"],
+.settings input[type="number"] {
+  width: 50%;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #222;
+  font-size: 12px;
+}
+
+.settings select {
+  width: 50%;
+  padding: 4px 4px 4px 5px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #222;
+  font-size: 12px;
+}
+
+
+/* 토글 스위치 */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  min-width: 48px;
+  height: 20px;
+  flex-shrink: 0;
+  flex-grow: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  background: #ccc;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.switch .slider::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .slider {
+  background: #8800ff;
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(28px);
+}
+
+.switch input:disabled + .slider {
+  background: #e0e0e0;
+  cursor: not-allowed;
+}
+
+.page-range-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.page-range-group select {
+  width: 50%;
+}
+
+.custom-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #555;
+  width: 50%;
+  margin-left: auto;
+}
+
+.custom-range input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  padding-right: 2px;
+}
+
+.settings select:disabled,
+.settings input:disabled {
+  background: #f0f0f0;
+  color: #999;
+}
+
+/* 시작 버튼 */
+.btn-start {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background: #8800ff;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-start:hover { background: #7200d6; }
+.btn-start.btn-stop { background: #ff4d6a; }
+.btn-start.btn-stop:hover { background: #e6355a; }
+.btn-start:disabled { background: #ccc; cursor: not-allowed; }
+
+/* 진행률 */
+.progress { margin-top: 16px; }
+
+.progress-bar {
+  height: 6px;
+  background: #e5e5e5;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #aa44ff;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.status {
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* 결과 */
+.result {
+  margin-top: 16px;
+  padding: 12px;
+  background: #dcfce7;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+/* 툴팁 */
+.info-icon {
+  display: inline-block;
+  cursor: pointer;
+  font-size: 13px;
+  color: #999;
+  position: relative;
+}
+
+.info-icon:hover {
+  color: #8800ff;
+}
+
+.tooltip {
+  position: fixed;
+  background: #333;
+  color: #fff;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: normal;
+  width: 120px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* 모달 */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.modal-box {
+  position: relative;
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  width: 200px;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.modal-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.modal-cancel {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.modal-cancel:hover {
+  background: #e0e0e0;
+}
+
+.modal-confirm {
+  background: #ff4d6a;
+  color: #fff;
+}
+
+.modal-confirm:hover {
+  background: #e6355a;
+}
+
+.hidden { display: none; }
