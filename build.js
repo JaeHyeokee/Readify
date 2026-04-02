@@ -10,7 +10,7 @@ const outdir = "dist";
 if (!fs.existsSync(outdir)) fs.mkdirSync(outdir, { recursive: true });
 
 // 정적 파일 복사
-const staticFiles = ["manifest.json", "src/popup.html", "src/popup.css", "src/offscreen.html"];
+const staticFiles = ["manifest.json", "src/popup/popup.html", "src/popup/popup.css", "src/offscreen/offscreen.html"];
 for (const file of staticFiles) {
   const dest = path.join(outdir, path.basename(file));
   fs.copyFileSync(file, dest);
@@ -76,12 +76,21 @@ const buildOptions = {
 const entries = [
   { entryPoints: ["src/background.js"], outdir, ...buildOptions },
   { entryPoints: ["src/content.js"], outdir, ...buildOptions },
-  { entryPoints: ["src/popup.js"], outdir, ...buildOptions },
   {
-    entryPoints: ["src/offscreen.js"],
-    outdir,
-    ...buildOptions,
-    // offscreen에서 tesseract.js 사용 시 worker 경로 처리
+    entryPoints: ["src/popup/popup.js"],
+    outfile: path.join(outdir, "popup.js"),
+    bundle: true,
+    format: "iife",
+    target: "chrome120",
+    logLevel: "info",
+  },
+  {
+    entryPoints: ["src/offscreen/offscreen.js"],
+    outfile: path.join(outdir, "offscreen.js"),
+    bundle: true,
+    format: "iife",
+    target: "chrome120",
+    logLevel: "info",
     define: { "process.env.NODE_ENV": '"production"' },
   },
 ];
