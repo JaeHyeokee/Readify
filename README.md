@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icons/logo.svg" alt="Readify" width="200">
+  <img src="icons/logo.png" alt="Readify" width="200">
 </p>
 <p align="center">웹 문서를 캡처하고 OCR 처리하여 검색 가능한 PDF로 변환하는 Chrome 확장 프로그램</p>
 
