@@ -117,8 +117,11 @@ async function capturePages(tabId, pageStep, startPage, endPage) {
   const pageCount = endPage - startPage + 1;
   const images = [];
 
+  // 캡처 시작 전 오버레이(컨트롤바 등)를 숨기고, 전체 캡처 완료 후 복원
+  await sendToTab(tabId, { type: MSG.HIDE_OVERLAYS });
+
   for (let i = startPage - 1; i < endPage; i++) {
-    if (checkStop()) return null;
+    if (checkStop()) break;
 
     // content script에 스크롤 요청 → 이미지 로드 대기 후 페이지 좌표 반환
     const scrollResult = await sendToTab(tabId, {
@@ -135,6 +138,9 @@ async function capturePages(tabId, pageStep, startPage, endPage) {
     scanState = { status: SCAN_STATUS.scanning, step: UI_TEXT.steps.readingPages, current, total: pageCount };
     safeSend({ type: MSG.PROGRESS, step: UI_TEXT.steps.readingPages, current, total: pageCount });
   }
+
+  // 캡처 완료 후 오버레이 복원
+  await sendToTab(tabId, { type: MSG.RESTORE_OVERLAYS });
 
   return images;
 }

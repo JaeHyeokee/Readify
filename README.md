@@ -1,10 +1,11 @@
-# Readify
-
-> 웹 문서를 캡처하고 OCR 처리하여 검색 가능한 PDF로 변환하는 Chrome 확장 프로그램
+<p align="center">
+  <img src="icons/logo.svg" alt="Readify" width="200">
+</p>
+<p align="center">웹 문서를 캡처하고 OCR 처리하여 검색 가능한 PDF로 변환하는 Chrome 확장 프로그램</p>
 
 ---
 
-## 시작하기
+## 🚀 시작하기
 
 ### 1. 사전 요구사항
 
@@ -44,7 +45,7 @@ pnpm watch
 
 ---
 
-## 설정
+## ⚙️ 설정
 
 | 항목 | 설명 | 기본값 |
 |:-----|:-----|:-------|
@@ -55,31 +56,37 @@ pnpm watch
 
 ---
 
-## 프로젝트 개요
+## 📖 프로젝트 개요
 
 ### 1. 프로젝트 구조
 
 ```
-readify
-├── src
-│   ├── constants.js              → 공통 상수 (메시지 타입, OCR/이미지/표 설정)
-│   ├── background.js             → Service Worker (파이프라인 오케스트레이션)
-│   ├── content.js                → Content Script (DOM 측정 및 스크롤)
-│   ├── popup
-│   │   ├── popup.html            → 팝업 UI
-│   │   ├── popup.css             → 팝업 스타일
-│   │   └── popup.js              → 팝업 로직 (설정, 진행률, 모달)
-│   └── offscreen
-│       ├── offscreen.html        → Offscreen Document
-│       ├── offscreen.js          → 메시지 핸들러 + 파이프라인 조합
-│       ├── preprocess.js         → 이미지 전처리 (그레이스케일, 이진화)
-│       ├── tableDetect.js        → 표 감지 (선 검출, 셀 구조화)
-│       └── pdfBuilder.js         → PDF 생성 (이미지 임베드, 텍스트 오버레이)
-├── icons                         → 확장 프로그램 아이콘 (16/48/128)
-├── dist                          → 빌드 결과물 (Chrome에 로드하는 폴더)
-├── manifest.json                 → Chrome 확장 매니페스트 (MV3)
-├── build.js                      → esbuild 빌드 스크립트
-└── package.json                  → 패키지 설정
+📁 readify/
+│
+├─ 📂 src/
+│  ├─ 📜 constants.js ········· 공통 상수 (메시지 타입, OCR/이미지/표 설정)
+│  ├─ 📜 background.js ········ Service Worker — 파이프라인 오케스트레이션
+│  ├─ 📜 content.js ··········· Content Script — 뷰어 자동 감지 & DOM 스크롤
+│  │
+│  ├─ 📂 popup/
+│  │  ├─ 🌐 popup.html ········ 팝업 UI 마크업
+│  │  ├─ 🎨 popup.css ········· 팝업 스타일
+│  │  └─ 📜 popup.js ·········· 팝업 로직 (설정, 진행률, 모달)
+│  │
+│  └─ 📂 offscreen/
+│     ├─ 🌐 offscreen.html ···· Offscreen Document
+│     ├─ 📜 offscreen.js ······ 메시지 핸들러 + 파이프라인 조합
+│     ├─ 📜 preprocess.js ····· 이미지 전처리 (그레이스케일 → 이진화)
+│     ├─ 📜 tableDetect.js ···· 표 감지 (런렝스 인코딩 + 클러스터링)
+│     └─ 📜 pdfBuilder.js ····· PDF 생성 (이미지 임베드 + 텍스트 오버레이)
+│
+├─ 📂 icons/ ·················· 확장 프로그램 아이콘 (16 / 48 / 128)
+├─ 📂 dist/ ··················· 빌드 결과물 — Chrome에 로드하는 폴더
+│
+├─ 📄 manifest.json ··········· Chrome 확장 매니페스트 (MV3)
+├─ 📜 build.js ················ esbuild 빌드 스크립트
+├─ 📄 package.json ············ 패키지 설정
+└─ 📄 pnpm-lock.yaml ········· 의존성 잠금 파일
 ```
 
 ### 2. 기술 스택
@@ -139,7 +146,7 @@ flowchart TD
 
 ---
 
-## 권한
+## 🔐 권한
 
 | 권한 | 용도 |
 |:-----|:-----|

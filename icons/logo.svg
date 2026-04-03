@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Courgette&amp;display=swap');
+    </style>
+  </defs>
+  <text x="50%" y="38" text-anchor="middle" font-family="'Courgette', cursive" font-size="36" fill="#8800ff">Readify</text>
+</svg>

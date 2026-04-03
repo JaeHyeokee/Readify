@@ -37,13 +37,12 @@ function cleanupScheduler() {
 
 // ─── OCR 파이프라인 ───
 
-/** 모든 이미지를 이진화 전처리하여 OCR 입력용 Blob 배열로 변환한다. */
+/** 이미지를 OCR 입력용 Blob 배열로 변환한다. (스크린샷은 전처리 없이 원본 사용) */
 async function preprocessAll(images) {
   const blobs = [];
   for (let i = 0; i < images.length; i++) {
     const rawImageData = await loadImage(images[i]);
-    const processedImageData = preprocess(rawImageData);
-    const blob = await imageDataToBlob(processedImageData);
+    const blob = await imageDataToBlob(rawImageData);
     blobs.push(blob);
   }
   return blobs;
