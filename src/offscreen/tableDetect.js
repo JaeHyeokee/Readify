@@ -107,18 +107,39 @@ function clusterValues(values, tolerance) {
   );
 }
 
-/** OCR로 인식된 단어들을 좌표 기준으로 해당 셀에 매핑한다. (단어의 bbox가 셀 안에 포함되는지 검사) */
+/**
+ * OCR로 인식된 단어들을 좌표 기준으로 해당 셀에 매핑한다.
+ * 셀을 y로 정렬한 인덱스 + 이진 탐색으로 단어별 후보 셀을 좁혀 O(W·log C + matches)로 처리.
+ */
 function mapWordsToCells(words, cells) {
   for (const cell of cells) cell.words = [];
+  if (cells.length === 0 || words.length === 0) return cells;
+
+  // 셀을 y(상단) 기준으로 정렬한 사본을 인덱스로 사용
+  const sorted = cells.slice().sort((a, b) => a.y - b.y);
+  const yStarts = sorted.map((c) => c.y);
+
+  // yStarts에서 target보다 큰 첫 인덱스 (upper_bound)
+  const upperBound = (target) => {
+    let lo = 0, hi = yStarts.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (yStarts[mid] <= target) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
 
   for (const word of words) {
-    for (const cell of cells) {
-      // bbox: { x0, y0, x1, y1 } — 단어의 좌상단/우하단 좌표
+    const { x0, x1, y0, y1 } = word.bbox;
+    // 단어의 y0보다 yStarts가 더 큰 첫 셀까지가 후보 끝 — 그 이후 셀은 word.y0 < cell.y이므로 포함 불가
+    const end = upperBound(y0);
+    for (let i = 0; i < end; i++) {
+      const cell = sorted[i];
       if (
-        word.bbox.x0 >= cell.x &&
-        word.bbox.x1 <= cell.x + cell.width &&
-        word.bbox.y0 >= cell.y &&
-        word.bbox.y1 <= cell.y + cell.height
+        x0 >= cell.x &&
+        x1 <= cell.x + cell.width &&
+        y1 <= cell.y + cell.height
       ) {
         cell.words.push(word);
       }

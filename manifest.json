@@ -31,7 +31,12 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["tesseract-worker.min.js", "tesseract-core-lstm.wasm.js"],
+      "resources": [
+        "tesseract-worker.min.js",
+        "tesseract-core-lstm.wasm.js",
+        "tessdata/*",
+        "NotoSansCJKkr-Regular.otf"
+      ],
       "matches": ["<all_urls>"]
     }
   ]

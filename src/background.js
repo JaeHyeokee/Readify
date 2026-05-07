@@ -7,12 +7,13 @@
  *   4) 다운로드 + 저장 완료 감지
  */
 
-const { MESSAGE_TYPES: MSG, SCAN_STATUS, UI_TEXT } = require("./constants.js");
+const { MESSAGE_TYPES: MSG, SCAN_STATUS, UI_TEXT, TIMING } = require("./constants.js");
+const { safeSendRuntimeMessage } = require("./messaging.js");
 
 /** offscreen document가 이미 생성되었는지 여부 */
 let offscreenReady = false;
 /** 사용자 중지 요청 플래그 */
-let stopRequested = false;
+let stopFlag = false;
 /** 파이프라인 중복 실행 방지 플래그 */
 let pipelineRunning = false;
 
@@ -21,19 +22,10 @@ let scanState = { status: SCAN_STATUS.idle };
 
 // ─── 유틸리티 ───
 
-/** 팝업에 메시지 전송. 팝업이 닫혀 있으면 에러를 무시한다. */
-function safeSend(msg) {
-  try {
-    chrome.runtime.sendMessage(msg, () => {
-      if (chrome.runtime.lastError) { /* 팝업 닫힘 — 무시 */ }
-    });
-  } catch (e) { /* 무시 */ }
-}
-
-/** scanState를 갱신하고 팝업에 알린다. */
+/** scanState를 갱신하고 팝업에 STATE 이벤트로 알린다. */
 function updateState(status, extra = {}) {
   scanState = { status, ...extra };
-  safeSend({ type: status, ...extra });
+  safeSendRuntimeMessage({ type: MSG.STATE, ...scanState });
 }
 
 /**
@@ -41,37 +33,36 @@ function updateState(status, extra = {}) {
  * @returns {boolean} true면 호출자는 즉시 return해야 한다.
  */
 function checkStop() {
-  if (stopRequested) {
+  if (stopFlag) {
     updateState(SCAN_STATUS.stopped);
     return true;
   }
   return false;
 }
 
-/** chrome 메시지 응답을 Promise resolve로 연결하는 콜백 생성기 */
-function messageCallback(resolve) {
-  return (response) => {
-    if (chrome.runtime.lastError) {
-      resolve({ success: false, error: chrome.runtime.lastError.message });
+/**
+ * chrome 메시지 API를 Promise로 감싸 응답을 기다린다.
+ * tabId가 주어지면 탭(content script)으로, 아니면 확장 런타임(offscreen)으로 전송한다.
+ */
+function sendMessageAsync(tabId, message) {
+  return new Promise((resolve) => {
+    const callback = (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        resolve(response);
+      }
+    };
+    if (tabId != null) {
+      chrome.tabs.sendMessage(tabId, message, callback);
     } else {
-      resolve(response);
+      chrome.runtime.sendMessage(message, callback);
     }
-  };
-}
-
-/** content script(탭)에 메시지를 보내고 응답을 기다린다. */
-function sendToTab(tabId, message) {
-  return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, message, messageCallback(resolve));
   });
 }
 
-/** offscreen 등 확장 내부 컨텍스트에 메시지를 보내고 응답을 기다린다. */
-function sendToRuntime(message) {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, messageCallback(resolve));
-  });
-}
+const sendToTab = (tabId, message) => sendMessageAsync(tabId, message);
+const sendToRuntime = (message) => sendMessageAsync(null, message);
 
 // ─── offscreen 관리 ───
 
@@ -135,8 +126,12 @@ async function capturePages(tabId, pageStep, startPage, endPage) {
 
     // 0-based 인덱스를 1-based 진행률로 변환
     const current = i - (startPage - 1) + 1;
-    scanState = { status: SCAN_STATUS.scanning, step: UI_TEXT.steps.readingPages, current, total: pageCount };
-    safeSend({ type: MSG.PROGRESS, step: UI_TEXT.steps.readingPages, current, total: pageCount });
+    updateState(SCAN_STATUS.scanning, {
+      step: UI_TEXT.steps.readingPages,
+      current,
+      total: pageCount,
+    });
+    safeSendRuntimeMessage({ type: MSG.PROGRESS, step: UI_TEXT.steps.readingPages, current, total: pageCount });
   }
 
   // 캡처 완료 후 오버레이 복원
@@ -170,17 +165,22 @@ async function processWithOffscreen(images, config) {
     config: { quality: config.quality, ocr: config.ocr },
   });
 
+  // 사용자 중지로 인한 종료는 null을 반환 — 호출자가 checkStop으로 분기
+  if (result?.stopped) return null;
+
   if (!result?.success) {
     throw new Error(result?.error || "PDF 생성 실패 (응답 없음)");
   }
 
-  return result.pdfBase64;
+  return result.blobUrl;
 }
 
-/** 4단계: base64 PDF를 다운로드하고, 저장 대화상자 완료(또는 취소)를 기다린다. */
-async function downloadPdf(pdfBase64, filename) {
-  const url = `data:application/pdf;base64,${pdfBase64}`;
-
+/**
+ * 4단계: PDF Blob URL을 다운로드하고, 저장 대화상자 완료(또는 취소)를 기다린다.
+ * 큰 PDF에서 data URL이 실패하는 문제를 피하기 위해 offscreen에서 Blob URL을 생성해 전달받는다.
+ * 다운로드 종료 후 offscreen에 revoke 신호를 보내 메모리를 회수한다.
+ */
+async function downloadPdf(blobUrl, filename) {
   const today = new Date();
   const dateStr = [
     today.getFullYear(),
@@ -188,50 +188,55 @@ async function downloadPdf(pdfBase64, filename) {
     String(today.getDate()).padStart(2, "0"),
   ].join("");
 
-  scanState = { status: SCAN_STATUS.saving };
-  safeSend({ type: MSG.SAVE_READY });
+  updateState(SCAN_STATUS.saving);
 
-  const downloadId = await chrome.downloads.download({
-    url,
-    filename: `${filename}_${dateStr}.pdf`,
-    saveAs: true,
-  });
+  try {
+    const downloadId = await chrome.downloads.download({
+      url: blobUrl,
+      filename: `${filename}_${dateStr}.pdf`,
+      saveAs: true,
+    });
 
-  // 다운로드 상태 변화를 감지하여 완료/취소를 기다린다. 5분 타임아웃으로 무한 대기를 방지.
-  const DOWNLOAD_TIMEOUT = 300000;
-  await new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      chrome.downloads.onChanged.removeListener(onChanged);
-      resolve();
-    }, DOWNLOAD_TIMEOUT);
-
-    function onChanged(delta) {
-      if (delta.id !== downloadId) return;
-      if (delta.state?.current === "complete" || delta.state?.current === "interrupted") {
-        clearTimeout(timer);
+    // 다운로드 상태 변화를 감지하여 완료/취소를 기다린다. 5분 타임아웃으로 무한 대기를 방지.
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
         chrome.downloads.onChanged.removeListener(onChanged);
         resolve();
+      }, TIMING.downloadTimeout);
+
+      function onChanged(delta) {
+        if (delta.id !== downloadId) return;
+        if (delta.state?.current === "complete" || delta.state?.current === "interrupted") {
+          clearTimeout(timer);
+          chrome.downloads.onChanged.removeListener(onChanged);
+          resolve();
+        }
       }
-    }
-    chrome.downloads.onChanged.addListener(onChanged);
-  });
+      chrome.downloads.onChanged.addListener(onChanged);
+    });
+  } finally {
+    // offscreen 컨텍스트에 생성된 Blob URL이므로 그쪽에서 revoke
+    safeSendRuntimeMessage({ type: MSG.REVOKE_URL, url: blobUrl });
+  }
 }
 
 // ─── 메시지 라우팅 ───
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === MSG.START_SCAN) {
-    // 중복 실행 방지: 이미 파이프라인이 돌고 있으면 무시
+    // 이전 파이프라인이 종료되기 전 새 파이프라인을 시작하면 stopFlag/scanState가 공유되어 경합한다.
+    // pipelineRunning이 false가 될 때까지(이전 finally 도달까지) 무시.
     if (!pipelineRunning) {
-      stopRequested = false;
+      stopFlag = false;
       runPipeline(msg.config);
     }
     return false;
   }
 
   if (msg.type === MSG.STOP_SCAN) {
-    stopRequested = true;
-    safeSend({ type: MSG.STOP }); // offscreen에도 중지 신호 전달
+    stopFlag = true;
+    // pipelineRunning은 이전 파이프라인 finally에서 false로 떨어진다 (즉시 리셋하지 않음).
+    safeSendRuntimeMessage({ type: MSG.STOP }); // offscreen에도 중지 신호 전달
     updateState(SCAN_STATUS.stopped);
     return false;
   }
@@ -243,8 +248,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // offscreen에서 보낸 진행률을 팝업으로 중계
   if (msg.type === MSG.PROGRESS && sender.url?.includes("offscreen")) {
-    scanState = { status: SCAN_STATUS.scanning, step: msg.step, current: msg.current, total: msg.total };
-    safeSend(msg);
+    updateState(SCAN_STATUS.scanning, { step: msg.step, current: msg.current, total: msg.total });
+    safeSendRuntimeMessage(msg);
     return false;
   }
 });
@@ -255,7 +260,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function runPipeline(config) {
   pipelineRunning = true;
   try {
-    scanState = { status: SCAN_STATUS.scanning, step: UI_TEXT.steps.readingPages, current: 0, total: 0 };
+    updateState(SCAN_STATUS.scanning, {
+      step: UI_TEXT.steps.readingPages,
+      current: 0,
+      total: 0,
+    });
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const { totalPages, pageStep } = await injectAndMeasure(tab.id);
@@ -269,18 +278,23 @@ async function runPipeline(config) {
 
     if (checkStop()) return;
 
-    const pdfBase64 = await processWithOffscreen(images, config);
+    const blobUrl = await processWithOffscreen(images, config);
 
     if (checkStop()) return;
+    if (!blobUrl) return; // offscreen에서 중지됨
 
-    await downloadPdf(pdfBase64, config.filename || "Readify");
+    await downloadPdf(blobUrl, config.filename || "Readify");
 
-    scanState = { status: SCAN_STATUS.done };
-    safeSend({ type: MSG.SAVE_DONE });
+    updateState(SCAN_STATUS.done);
   } catch (err) {
-    scanState = { status: SCAN_STATUS.error, message: err.message };
-    safeSend({ type: MSG.ERROR, message: err.message });
+    // 사용자 중지로 인한 reject는 정상 종료로 분류
+    if (stopFlag) {
+      updateState(SCAN_STATUS.stopped);
+    } else {
+      updateState(SCAN_STATUS.error, { message: err.message });
+    }
   } finally {
     pipelineRunning = false;
+    stopFlag = false; // 다음 START_SCAN을 위해 리셋
   }
 }

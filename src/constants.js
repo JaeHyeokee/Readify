@@ -1,21 +1,38 @@
-/** 공통 상수 — 매직 넘버, 문자열, 메시지 타입 모음 */
+/** 공통 상수 — 메시지 타입, 상태, 도메인 설정, 타이밍 */
 
+/**
+ * 컨텍스트 간 메시지 타입.
+ * 메시지 type으로만 사용한다. (상태 표현용 SCAN_STATUS와 분리)
+ */
 const MESSAGE_TYPES = {
+  // 명령 (popup → background → offscreen/content)
   START_SCAN: "START_SCAN",
   STOP_SCAN: "STOP_SCAN",
   GET_STATE: "GET_STATE",
-  PROGRESS: "PROGRESS",
-  STOP: "STOP",
   CROP: "CROP",
   PROCESS: "PROCESS",
   MEASURE: "MEASURE",
   SCROLL_TO: "SCROLL_TO",
   HIDE_OVERLAYS: "HIDE_OVERLAYS",
   RESTORE_OVERLAYS: "RESTORE_OVERLAYS",
-  SAVE_READY: "SAVE_READY",
-  SAVE_DONE: "SAVE_DONE",
-  STOPPED: "STOPPED",
-  ERROR: "ERROR",
+  STOP: "STOP",
+  REVOKE_URL: "REVOKE_URL",
+  // 이벤트 (background → popup)
+  PROGRESS: "PROGRESS",
+  STATE: "STATE",
+};
+
+/**
+ * 파이프라인 상태값.
+ * scanState.status에만 사용한다. (메시지 type으로 사용 금지)
+ */
+const SCAN_STATUS = {
+  idle: "idle",
+  scanning: "scanning",
+  saving: "saving",
+  done: "done",
+  stopped: "stopped",
+  error: "error",
 };
 
 const OCR_CONFIG = {
@@ -37,6 +54,14 @@ const TABLE_CONFIG = {
   rowMatchTolerance: 20,
 };
 
+/** 타이밍 관련 상수 (ms) */
+const TIMING = {
+  downloadTimeout: 300000,
+  imageWaitTimeout: 5000,
+  imagePollInterval: 200,
+  pageStepMargin: 10,
+};
+
 const UI_TEXT = {
   steps: {
     readingPages: "페이지 읽는 중",
@@ -52,20 +77,12 @@ const UI_TEXT = {
   },
 };
 
-const SCAN_STATUS = {
-  idle: "idle",
-  scanning: "scanning",
-  saving: "saving",
-  done: "done",
-  stopped: "stopped",
-  error: "error",
-};
-
 module.exports = {
   MESSAGE_TYPES,
+  SCAN_STATUS,
   OCR_CONFIG,
   IMAGE_CONFIG,
   TABLE_CONFIG,
+  TIMING,
   UI_TEXT,
-  SCAN_STATUS,
 };

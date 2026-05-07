@@ -8,43 +8,56 @@
  * 범용 휴리스틱으로 스크롤 컨테이너와 페이지 요소를 찾는다.
  */
 
-const { MESSAGE_TYPES: MSG } = require("./constants.js");
+const { MESSAGE_TYPES: MSG, TIMING } = require("./constants.js");
 
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+/** 두 번의 requestAnimationFrame을 기다려 layout/paint가 적용되도록 한다. */
+function nextFrames(count = 2) {
+  return new Promise((resolve) => {
+    let n = count;
+    const tick = () => {
+      if (--n <= 0) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
 
 // ─── 뷰어 프로필 ───
 
-/** 알려진 문서 뷰어별 셀렉터 정의. 순서대로 매칭을 시도한다. */
+/**
+ * 알려진 문서 뷰어별 셀렉터 정의. 순서대로 매칭을 시도한다.
+ * 각 프로필은 단일 형태: { name, getContainer, pageSelector, imageSelector }
+ */
 const VIEWER_PROFILES = [
   {
     name: "streamdocs",
-    container: ".pre-scrollable",
-    page: "sd-page",
-    image: "sd-image img",
+    getContainer: () => document.querySelector(".pre-scrollable"),
+    pageSelector: "sd-page",
+    imageSelector: "sd-image img",
   },
   {
     name: "pdfjs",
-    container: "#viewerContainer",
-    page: ".page",
-    image: ".canvasWrapper canvas",
+    getContainer: () => document.querySelector("#viewerContainer"),
+    pageSelector: ".page",
+    imageSelector: ".canvasWrapper canvas",
   },
   {
     name: "google-docs-viewer",
-    container: ".ndfHFb-c4YZDc-cYSp0e-s2gQvd",
-    page: ".ndfHFb-c4YZDc-cYSp0e-DARUcf-PLDbbf",
-    image: "img",
+    getContainer: () => document.querySelector(".ndfHFb-c4YZDc-cYSp0e-s2gQvd"),
+    pageSelector: ".ndfHFb-c4YZDc-cYSp0e-DARUcf-PLDbbf",
+    imageSelector: "img",
   },
   {
     name: "issuu",
-    container: "[class*='reader']",
-    page: "[class*='page']",
-    image: "img, canvas",
+    getContainer: () => document.querySelector("[class*='reader']"),
+    pageSelector: "[class*='page']",
+    imageSelector: "img, canvas",
   },
   {
     name: "fliphtml5",
-    container: ".fliphtml5-container, #flipbook",
-    page: ".page",
-    image: "canvas, img",
+    getContainer: () => document.querySelector(".fliphtml5-container, #flipbook"),
+    pageSelector: ".page",
+    imageSelector: "canvas, img",
   },
 ];
 
@@ -57,11 +70,11 @@ function detectViewer() {
 
   // 알려진 프로필 매칭
   for (const profile of VIEWER_PROFILES) {
-    const container = document.querySelector(profile.container);
+    const container = profile.getContainer();
     if (container) {
-      const pages = container.querySelectorAll(profile.page);
+      const pages = container.querySelectorAll(profile.pageSelector);
       if (pages.length > 0) {
-        detectedProfile = { ...profile, generic: false };
+        detectedProfile = profile;
         return detectedProfile;
       }
     }
@@ -82,31 +95,43 @@ function detectGenericViewer() {
 
   return {
     name: "generic",
-    container: null, // DOM 요소를 직접 캐시
-    _containerEl: container,
-    page: pageSelector,
-    image: "img, canvas",
-    generic: true,
+    getContainer: () => container,
+    pageSelector,
+    imageSelector: "img, canvas",
   };
 }
 
-/** 문서 영역에서 가장 유력한 스크롤 컨테이너를 찾는다. */
+/**
+ * 문서 영역에서 가장 유력한 스크롤 컨테이너를 찾는다.
+ * BFS로 body부터 탐색하며 크기/오버플로우 기반으로 빠르게 가지치기.
+ */
 function findScrollableContainer() {
   const candidates = [];
+  const queue = [document.body];
+  const MAX_NODES = 5000; // 매우 큰 페이지에서도 안정적인 상한
+  let visited = 0;
 
-  for (const el of document.querySelectorAll("*")) {
-    const style = getComputedStyle(el);
-    const overflowY = style.overflowY;
-    if (overflowY !== "auto" && overflowY !== "scroll") continue;
-    if (el.scrollHeight <= el.clientHeight + 10) continue;
-    // 너무 작은 요소는 제외
+  while (queue.length && visited < MAX_NODES) {
+    const el = queue.shift();
+    visited++;
+
+    // 작은 요소는 자식까지 통째로 가지치기 (스크롤 컨테이너가 그 안에 있을 가능성 매우 낮음)
     if (el.clientHeight < 200 || el.clientWidth < 200) continue;
 
-    candidates.push({
-      el,
-      area: el.clientWidth * el.clientHeight,
-      scrollRange: el.scrollHeight - el.clientHeight,
-    });
+    const style = getComputedStyle(el);
+    const overflowY = style.overflowY;
+
+    if ((overflowY === "auto" || overflowY === "scroll") &&
+        el.scrollHeight > el.clientHeight + 10) {
+      candidates.push({
+        el,
+        area: el.clientWidth * el.clientHeight,
+        scrollRange: el.scrollHeight - el.clientHeight,
+      });
+    }
+
+    if (overflowY === "hidden") continue; // 더 들어가도 외부에 스크롤 노출 안 됨
+    for (const child of el.children) queue.push(child);
   }
 
   if (candidates.length === 0) {
@@ -189,34 +214,25 @@ function buildSelector(el) {
 /** 마지막으로 숨긴 오버레이 목록 — RESTORE_OVERLAYS 시 복원용 */
 let lastHidden = [];
 
-/** 감지된 뷰어의 스크롤 컨테이너 요소를 반환한다. */
-function getContainer() {
-  const profile = detectViewer();
-  if (!profile) return null;
-
-  // 범용 감지에서 직접 캐시한 DOM 요소
-  if (profile._containerEl) return profile._containerEl;
-
-  return document.querySelector(profile.container);
-}
-
 /** 뷰포트 중앙에 가장 가까운 페이지 요소를 찾아 반환한다. */
 function findCenteredPage() {
   const profile = detectViewer();
   if (!profile) return null;
 
-  const container = getContainer();
+  const container = profile.getContainer();
   if (!container) return null;
 
-  const centerY =
-    container.getBoundingClientRect().top +
-    container.getBoundingClientRect().height / 2;
+  const containerRect = container.getBoundingClientRect();
+  const centerY = containerRect.top + containerRect.height / 2;
 
   let best = null;
   let bestDist = Infinity;
-  for (const p of container.querySelectorAll(profile.page)) {
+  // querySelectorAll 결과 캐시는 매 호출마다 새로 — DOM이 동적으로 변할 수 있어 안전성 우선
+  const pages = container.querySelectorAll(profile.pageSelector);
+  for (const p of pages) {
     const r = p.getBoundingClientRect();
-    const dist = Math.abs(r.top + r.height / 2 - centerY);
+    const center = r.top + r.height / 2;
+    const dist = center > centerY ? center - centerY : centerY - center;
     if (dist < bestDist) {
       bestDist = dist;
       best = p;
@@ -225,15 +241,13 @@ function findCenteredPage() {
   return best;
 }
 
-/** 문서의 총 스크롤 높이와 페이지 간 간격(pageStep)을 측정한다. */
+/** 문서의 총 페이지 수와 페이지 간 간격(pageStep)을 측정한다. */
 function measureLayout() {
   const profile = detectViewer();
-  if (!profile) return { scrollHeight: 0, pageStep: 0 };
+  if (!profile) return { totalPages: 0, pageStep: 0 };
 
-  const container = getContainer();
-  const pages = container
-    ? container.querySelectorAll(profile.page)
-    : [];
+  const container = profile.getContainer();
+  const pages = container ? container.querySelectorAll(profile.pageSelector) : [];
 
   let pageStep = 0;
   if (pages.length >= 2) {
@@ -241,11 +255,11 @@ function measureLayout() {
     const r1 = pages[1].getBoundingClientRect();
     pageStep = r1.top - r0.top;
   } else if (pages.length === 1) {
-    pageStep = pages[0].offsetHeight + 10;
+    pageStep = pages[0].offsetHeight + TIMING.pageStepMargin;
   }
 
   return {
-    scrollHeight: container ? container.scrollHeight : 0,
+    totalPages: pages.length,
     pageStep,
   };
 }
@@ -260,7 +274,8 @@ function hideOverlays() {
     "[role='toolbar']", "[role='navigation']",
   ];
   const hidden = [];
-  const container = getContainer();
+  const profile = detectViewer();
+  const container = profile ? profile.getContainer() : null;
 
   for (const sel of selectors) {
     for (const el of document.querySelectorAll(sel)) {
@@ -296,14 +311,13 @@ function getPageRect() {
 }
 
 /** 중앙 페이지의 이미지/캔버스가 완전히 로드될 때까지 폴링 방식으로 대기한다. */
-function waitForImage(timeout = 5000) {
+function waitForImage(timeout = TIMING.imageWaitTimeout) {
   return new Promise((resolve) => {
     const profile = detectViewer();
     const page = findCenteredPage();
     if (!page || !profile) return resolve(false);
 
-    const imageSelector = profile.image || "img, canvas";
-    const media = page.querySelector(imageSelector);
+    const media = page.querySelector(profile.imageSelector || "img, canvas");
     if (!media) return resolve(false);
 
     const timer = setTimeout(() => resolve(false), timeout);
@@ -317,7 +331,7 @@ function waitForImage(timeout = 5000) {
         clearTimeout(timer);
         resolve(true);
       } else {
-        setTimeout(check, 200);
+        setTimeout(check, TIMING.imagePollInterval);
       }
     };
     check();
@@ -326,56 +340,61 @@ function waitForImage(timeout = 5000) {
 
 // ─── 메시지 핸들러 ───
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === MSG.MEASURE) {
-    const profile = detectViewer();
-    if (!profile) {
-      sendResponse({ success: false, error: "문서 뷰어를 찾을 수 없습니다" });
+// 같은 탭에 content script가 여러 번 주입될 때 listener 중복 등록 방지
+if (!window.__readifyInjected) {
+  window.__readifyInjected = true;
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === MSG.MEASURE) {
+      // SPA 라우팅 등으로 DOM이 바뀐 경우를 대비해 매 측정 시 캐시를 초기화한다.
+      detectedProfile = null;
+      const profile = detectViewer();
+      if (!profile) {
+        sendResponse({ success: false, error: "문서 뷰어를 찾을 수 없습니다" });
+        return false;
+      }
+      const layout = measureLayout();
+      sendResponse({
+        success: true,
+        totalPages: layout.totalPages,
+        pageStep: layout.pageStep,
+        viewer: profile.name,
+      });
       return false;
     }
-    const layout = measureLayout();
-    const totalPages =
-      layout.pageStep > 0
-        ? Math.round(layout.scrollHeight / layout.pageStep)
-        : 0;
-    sendResponse({
-      success: true,
-      totalPages,
-      pageStep: layout.pageStep,
-      viewer: profile.name,
-    });
-    return false;
-  }
 
-  if (msg.type === MSG.HIDE_OVERLAYS) {
-    lastHidden = hideOverlays();
-    sendResponse({ success: true });
-    return false;
-  }
-
-  if (msg.type === MSG.RESTORE_OVERLAYS) {
-    restoreOverlays(lastHidden);
-    lastHidden = [];
-    sendResponse({ success: true });
-    return false;
-  }
-
-  if (msg.type === MSG.SCROLL_TO) {
-    const container = getContainer();
-    if (container) {
-      // documentElement인 경우 window.scrollTo 사용
-      if (container === document.documentElement) {
-        window.scrollTo(0, msg.scrollTop);
-      } else {
-        container.scrollTop = msg.scrollTop;
-      }
+    if (msg.type === MSG.HIDE_OVERLAYS) {
+      lastHidden = hideOverlays();
+      sendResponse({ success: true });
+      return false;
     }
-    delay(400)
-      .then(() => waitForImage())
-      .then(() => {
-        const rect = getPageRect();
-        sendResponse({ success: true, rect });
-      });
-    return true;
-  }
-});
+
+    if (msg.type === MSG.RESTORE_OVERLAYS) {
+      restoreOverlays(lastHidden);
+      lastHidden = [];
+      sendResponse({ success: true });
+      return false;
+    }
+
+    if (msg.type === MSG.SCROLL_TO) {
+      const profile = detectViewer();
+      const container = profile ? profile.getContainer() : null;
+      if (container) {
+        // documentElement인 경우 window.scrollTo 사용
+        if (container === document.documentElement) {
+          window.scrollTo(0, msg.scrollTop);
+        } else {
+          container.scrollTop = msg.scrollTop;
+        }
+      }
+      // 두 프레임 동안 layout/paint를 기다린 뒤 이미지 로드 완료를 폴링
+      nextFrames(2)
+        .then(() => waitForImage())
+        .then(() => {
+          const rect = getPageRect();
+          sendResponse({ success: true, rect });
+        });
+      return true;
+    }
+  });
+}

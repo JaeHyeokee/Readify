@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 
 const isWatch = process.argv.includes("--watch");
-
 const outdir = "dist";
 
 // dist 디렉토리 초기화
@@ -22,6 +21,18 @@ if (!fs.existsSync(iconsDir)) fs.mkdirSync(iconsDir, { recursive: true });
 for (const file of fs.readdirSync("icons")) {
   fs.copyFileSync(path.join("icons", file), path.join(iconsDir, file));
 }
+
+// src/assets/ 의 정적 자산(폰트, tessdata)을 dist 루트로 복사
+function copyDirRecursive(srcDir, destDir) {
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (entry.isDirectory()) copyDirRecursive(src, dest);
+    else fs.copyFileSync(src, dest);
+  }
+}
+copyDirRecursive("src/assets", outdir);
 
 // tesseract worker 파일 복사 (WASM 기반)
 // pnpm strict 구조에서는 tesseract.js 경로를 통해 core를 찾는다

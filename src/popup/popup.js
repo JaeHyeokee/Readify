@@ -99,30 +99,67 @@ function buildConfig() {
   };
 }
 
-// ─── 상태 복원 (팝업 재오픈 시) ───
+// ─── 상태 적용 (STATE 이벤트 + 팝업 재오픈 시) ───
+
+/** scanState 객체를 받아 UI를 그에 맞게 갱신한다. */
+function applyState(state) {
+  if (!state) return;
+
+  switch (state.status) {
+    case SCAN_STATUS.idle:
+      setScanning(false);
+      progressEl.classList.add("hidden");
+      resultEl.classList.add("hidden");
+      startBtn.classList.remove("hidden");
+      break;
+
+    case SCAN_STATUS.scanning:
+      setScanning(true);
+      progressEl.classList.remove("hidden");
+      resultEl.classList.add("hidden");
+      if (state.total > 0) {
+        const pct = Math.round((state.current / state.total) * 100);
+        progressFill.style.width = `${pct}%`;
+        statusEl.textContent = `${state.step} (${state.current}/${state.total})`;
+      } else {
+        progressFill.style.width = "0%";
+        statusEl.textContent = UI_TEXT.status.preparing;
+      }
+      break;
+
+    case SCAN_STATUS.saving:
+      progressEl.classList.add("hidden");
+      startBtn.classList.add("hidden");
+      resultEl.classList.remove("hidden");
+      break;
+
+    case SCAN_STATUS.done:
+      startBtn.classList.remove("hidden");
+      resultEl.classList.add("hidden");
+      progressEl.classList.add("hidden");
+      setScanning(false);
+      break;
+
+    case SCAN_STATUS.stopped:
+      progressEl.classList.add("hidden");
+      resultEl.classList.add("hidden");
+      startBtn.classList.remove("hidden");
+      setScanning(false);
+      break;
+
+    case SCAN_STATUS.error:
+      progressEl.classList.remove("hidden");
+      statusEl.textContent = `오류: ${state.message || "알 수 없는 오류"}`;
+      startBtn.classList.remove("hidden");
+      setScanning(false);
+      break;
+  }
+}
 
 // 팝업이 열릴 때 background의 현재 상태를 조회하여 UI를 동기화
 chrome.runtime.sendMessage({ type: MSG.GET_STATE }, (state) => {
-  if (!state || state.status === SCAN_STATUS.idle) return;
-
-  if (state.status === SCAN_STATUS.scanning) {
-    setScanning(true);
-    progressEl.classList.remove("hidden");
-    if (state.total > 0) {
-      const pct = Math.round((state.current / state.total) * 100);
-      progressFill.style.width = `${pct}%`;
-      statusEl.textContent = `${state.step} (${state.current}/${state.total})`;
-    } else {
-      statusEl.textContent = UI_TEXT.status.preparing;
-    }
-  } else if (state.status === SCAN_STATUS.saving) {
-    // PDF 저장 대화상자가 열린 상태
-    startBtn.classList.add("hidden");
-    resultEl.classList.remove("hidden");
-  } else if (state.status === SCAN_STATUS.error) {
-    progressEl.classList.remove("hidden");
-    statusEl.textContent = `오류: ${state.message}`;
-  }
+  if (chrome.runtime.lastError) return;
+  applyState(state);
 });
 
 // ─── 이벤트 핸들러 ───
@@ -167,32 +204,12 @@ chrome.runtime.onMessage.addListener((msg) => {
     const pct = Math.round((msg.current / msg.total) * 100);
     progressFill.style.width = `${pct}%`;
     statusEl.textContent = `${msg.step} (${msg.current}/${msg.total})`;
+    return;
   }
 
-  // PDF 생성 완료 → 저장 대화상자 열림
-  if (msg.type === MSG.SAVE_READY) {
-    progressEl.classList.add("hidden");
-    startBtn.classList.add("hidden");
-    resultEl.classList.remove("hidden");
-  }
-
-  // 파일 저장 완료 → 초기 상태로 복귀
-  if (msg.type === MSG.SAVE_DONE) {
-    startBtn.classList.remove("hidden");
-    resultEl.classList.add("hidden");
-    setScanning(false);
-  }
-
-  // 사용자 중지 → 진행률 숨김
-  if (msg.type === MSG.STOPPED) {
-    progressEl.classList.add("hidden");
-    setScanning(false);
-  }
-
-  // 오류 발생
-  if (msg.type === MSG.ERROR) {
-    statusEl.textContent = `오류: ${msg.message}`;
-    setScanning(false);
+  // 상태 변화 — applyState가 모든 분기를 처리
+  if (msg.type === MSG.STATE) {
+    applyState(msg);
   }
 });
 

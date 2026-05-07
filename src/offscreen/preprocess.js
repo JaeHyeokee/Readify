@@ -59,13 +59,4 @@ function preprocess(imageData) {
   return imageData;
 }
 
-/** ImageData를 canvas에 그려 PNG Blob으로 변환한다. */
-function imageDataToBlob(imageData) {
-  const canvas = getCanvas();
-  canvas.width = imageData.width;
-  canvas.height = imageData.height;
-  getCtx().putImageData(imageData, 0, 0);
-  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-}
-
-module.exports = { loadImage, preprocess, imageDataToBlob, getCanvas, getCtx };
+module.exports = { loadImage, preprocess, getCanvas, getCtx };

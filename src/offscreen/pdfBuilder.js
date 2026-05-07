@@ -7,57 +7,34 @@
 const { PDFDocument } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
 
-const FONT_URL = "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf";
-
-/** 폰트 바이너리 캐시 — 첫 요청 시 CDN에서 다운로드 후 재사용 */
+/** 폰트 바이너리 캐시 — 첫 요청 시 확장 자산에서 로드 후 재사용 */
 let fontCache = null;
 
-/** 한글 폰트(Noto Sans CJK KR)를 PDF에 임베드한다. 캐시된 바이너리가 있으면 재사용. */
+/** 한글 폰트(Noto Sans CJK KR)를 PDF에 임베드한다. 빌드 단계에서 dist/에 번들된 자산을 사용. */
 async function loadKoreanFont(pdfDoc) {
   pdfDoc.registerFontkit(fontkit);
 
   if (!fontCache) {
-    const response = await fetch(FONT_URL);
-    if (!response.ok) throw new Error("한글 폰트를 다운로드할 수 없습니다");
+    const fontUrl = chrome.runtime.getURL("NotoSansCJKkr-Regular.otf");
+    const response = await fetch(fontUrl);
+    if (!response.ok) throw new Error("한글 폰트를 로드할 수 없습니다");
     fontCache = await response.arrayBuffer();
   }
 
   return pdfDoc.embedFont(fontCache, { subset: true });
 }
 
-/**
- * 표 구조를 PDF 페이지에 렌더링한다.
- * 셀 테두리를 그리고, 셀 내 텍스트를 투명하게 겹쳐 그린다.
- * (투명 텍스트는 PDF 뷰어에서 검색/복사용으로 사용됨)
- */
-function drawTable(pdfPage, table, imgHeight, font) {
-  for (const row of table) {
-    for (const cell of row.cells) {
-      const x = cell.x;
-      // PDF 좌표계는 좌하단 원점이므로, 이미지 좌표(좌상단 원점)를 변환
-      const y = imgHeight - cell.y - cell.height;
-
-      pdfPage.drawRectangle({ x, y, width: cell.width, height: cell.height, borderWidth: 0.5 });
-
-      for (const word of cell.words) {
-        pdfPage.drawText(word.text, {
-          x: word.bbox.x0,
-          y: imgHeight - word.bbox.y1,
-          size: 8,
-          font,
-          opacity: 0, // 투명 — 검색/복사 전용
-        });
-      }
-    }
-  }
+/** 이미지 좌표(좌상단 원점)의 y를 PDF 좌표(좌하단 원점)로 변환한다. */
+function toPdfY(imgHeight, yBottom) {
+  return imgHeight - yBottom;
 }
 
-/** 일반 텍스트(표 외부)를 PDF 페이지에 투명하게 렌더링한다. */
+/** OCR 단어 배열을 PDF 페이지에 투명 텍스트로 렌더링한다. (검색/복사 전용) */
 function drawWords(pdfPage, words, imgHeight, font) {
   for (const word of words) {
     pdfPage.drawText(word.text, {
       x: word.bbox.x0,
-      y: imgHeight - word.bbox.y1, // 좌표계 변환: 이미지(좌상단) → PDF(좌하단)
+      y: toPdfY(imgHeight, word.bbox.y1),
       size: 8,
       font,
       opacity: 0,
@@ -65,33 +42,40 @@ function drawWords(pdfPage, words, imgHeight, font) {
   }
 }
 
-/**
- * 이미지를 PDF에 임베드한다.
- * jpegQuality < 1.0이면 canvas에서 JPEG로 변환하여 용량을 줄이고,
- * 1.0이면 원본 PNG를 그대로 임베드한다.
- */
-async function embedImage(pdfDoc, dataUrl, canvas, jpegQuality) {
-  if (jpegQuality < 1.0) {
-    const jpegDataUrl = canvas.toDataURL("image/jpeg", jpegQuality);
-    // data URL 헤더를 제거하고 base64 디코딩
-    const jpegBase64 = jpegDataUrl.replace(/^data:image\/jpeg;base64,/, "");
-    const bytes = Uint8Array.from(atob(jpegBase64), (c) => c.charCodeAt(0));
-    return pdfDoc.embedJpg(bytes);
-  } else {
-    const pngBase64 = dataUrl.replace(/^data:image\/png;base64,/, "");
-    const bytes = Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0));
-    return pdfDoc.embedPng(bytes);
-  }
+/** 표 구조를 PDF 페이지에 렌더링 (셀 → 단어 평탄화 후 drawWords 재사용) */
+function drawTable(pdfPage, table, imgHeight, font) {
+  const words = table.flatMap((row) => row.cells.flatMap((cell) => cell.words));
+  drawWords(pdfPage, words, imgHeight, font);
 }
 
-/** PDF 문서를 base64 문자열로 인코딩한다. (data URL이나 다운로드에 사용) */
-async function encodePdf(pdfDoc) {
-  const pdfBytes = await pdfDoc.save();
-  // Uint8Array → binary string → base64
-  const binary = Array.from(new Uint8Array(pdfBytes))
-    .map((b) => String.fromCharCode(b))
-    .join("");
-  return btoa(binary);
+/** data URL의 base64 페이로드를 Uint8Array로 변환한다. */
+function dataUrlToBytes(dataUrl) {
+  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 }
 
-module.exports = { PDFDocument, loadKoreanFont, drawTable, drawWords, embedImage, encodePdf };
+/** 이미 그려진 캔버스에서 JPEG로 인코딩하여 PDF에 임베드한다. */
+async function embedJpegFromCanvas(pdfDoc, canvas, quality) {
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  return pdfDoc.embedJpg(dataUrlToBytes(dataUrl));
+}
+
+/** 원본 PNG data URL을 그대로 PDF에 임베드한다. (캔버스 라운드트립 없음) */
+async function embedPngFromDataUrl(pdfDoc, dataUrl) {
+  return pdfDoc.embedPng(dataUrlToBytes(dataUrl));
+}
+
+/** PDF 문서를 Uint8Array로 직렬화한다. */
+async function savePdfBytes(pdfDoc) {
+  return pdfDoc.save();
+}
+
+module.exports = {
+  PDFDocument,
+  loadKoreanFont,
+  drawTable,
+  drawWords,
+  embedJpegFromCanvas,
+  embedPngFromDataUrl,
+  savePdfBytes,
+};
