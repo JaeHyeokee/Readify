@@ -64,7 +64,8 @@ pnpm watch
 📁 readify/
 │
 ├─ 📂 src/
-│  ├─ 📜 constants.js ········· 공통 상수 (메시지 타입, OCR/이미지/표 설정)
+│  ├─ 📜 constants.js ········· 공통 상수 (메시지 타입, 상태, OCR/이미지/표/타이밍)
+│  ├─ 📜 messaging.js ········· chrome.runtime 메시지 공통 유틸
 │  ├─ 📜 background.js ········ Service Worker — 파이프라인 오케스트레이션
 │  ├─ 📜 content.js ··········· Content Script — 뷰어 자동 감지 & DOM 스크롤
 │  │
@@ -73,12 +74,18 @@ pnpm watch
 │  │  ├─ 🎨 popup.css ········· 팝업 스타일
 │  │  └─ 📜 popup.js ·········· 팝업 로직 (설정, 진행률, 모달)
 │  │
-│  └─ 📂 offscreen/
-│     ├─ 🌐 offscreen.html ···· Offscreen Document
-│     ├─ 📜 offscreen.js ······ 메시지 핸들러 + 파이프라인 조합
-│     ├─ 📜 preprocess.js ····· 이미지 전처리 (그레이스케일 → 이진화)
-│     ├─ 📜 tableDetect.js ···· 표 감지 (런렝스 인코딩 + 클러스터링)
-│     └─ 📜 pdfBuilder.js ····· PDF 생성 (이미지 임베드 + 텍스트 오버레이)
+│  ├─ 📂 offscreen/
+│  │  ├─ 🌐 offscreen.html ···· Offscreen Document
+│  │  ├─ 📜 offscreen.js ······ 메시지 핸들러 + 파이프라인 조합
+│  │  ├─ 📜 preprocess.js ····· 이미지 이진화 (표 감지 전처리)
+│  │  ├─ 📜 tableDetect.js ···· 표 감지 (런렝스 인코딩 + 클러스터링)
+│  │  └─ 📜 pdfBuilder.js ····· PDF 생성 (이미지 임베드 + 텍스트 오버레이)
+│  │
+│  └─ 📂 assets/ ·············· 번들 자산 (오프라인 빌드)
+│     ├─ 🅰️  NotoSansCJKkr-Regular.otf
+│     └─ 📂 tessdata/
+│        ├─ kor.traineddata.gz
+│        └─ eng.traineddata.gz
 │
 ├─ 📂 icons/ ·················· 확장 프로그램 아이콘 (16 / 48 / 128)
 ├─ 📂 dist/ ··················· 빌드 결과물 — Chrome에 로드하는 폴더
@@ -105,22 +112,19 @@ pnpm watch
 ```mermaid
 flowchart TD
     A["1. 페이지 캡처\n<i>background.js → content.js</i>\ncaptureVisibleTab + 크롭"]
-    B["2. 이미지 전처리\n그레이스케일 → 이진화\n<i>offscreen/preprocess.js</i>"]
-    C1["텍스트 인식\n<i>offscreen/offscreen.js\n(Tesseract.js 병렬)</i>"]
-    C2["표 감지\n<i>offscreen/tableDetect.js\n(런렝스 + 클러스터링)</i>"]
+    C1["2-a. 텍스트 인식\n<i>offscreen/offscreen.js\n(Tesseract.js 병렬)</i>"]
+    C2["2-b. 표 감지\n이진화 → 셀 추출\n<i>offscreen/preprocess.js + tableDetect.js</i>"]
     D["3. PDF 생성\n배경 이미지 + 투명 텍스트 레이어\n<i>offscreen/pdfBuilder.js (pdf-lib)</i>"]
     E["4. 다운로드\n<i>background.js\n(chrome.downloads)</i>"]
 
-    A -->|"페이지 이미지"| B
-    B -->|"이진화 이미지"| C1
-    C1 -->|"OCR 단어"| D
+    A -->|"PNG 이미지"| C1
+    A -->|"PNG 이미지"| C2
     C1 -->|"OCR 단어"| C2
-    B -->|"이진화 이미지"| C2
+    C1 -->|"OCR 단어"| D
     C2 -->|"표 구조"| D
-    D -->|"base64 PDF"| E
+    D -->|"PDF Blob URL"| E
 
     style A fill:#8800ff,stroke:#7200d6,color:#fff
-    style B fill:#1a1a2e,stroke:#444,color:#e0e0e0
     style C1 fill:#16213e,stroke:#0f3460,color:#e0e0e0
     style C2 fill:#16213e,stroke:#0f3460,color:#e0e0e0
     style D fill:#0a3d2a,stroke:#166534,color:#4ade80
